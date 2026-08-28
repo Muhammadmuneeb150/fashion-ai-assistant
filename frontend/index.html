@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FashionHub — AI Sales Assistant Demo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  body { font-family: 'Inter', sans-serif; }
+  .font-display { font-family: 'Playfair Display', serif; }
+  .accent { color: #B8862B; }
+  .bg-accent { background-color: #B8862B; }
+  .chat-scroll::-webkit-scrollbar { width: 6px; }
+  .chat-scroll::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 3px; }
+</style>
+</head>
+<body class="bg-[#0f0f10] text-white">
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// Point this at your deployed backend. Defaults to localhost for local dev.
+const API_BASE = window.API_BASE || "http://localhost:5000/api";
+
+function Header({ view, setView }) {
+  return (
+    <header className="flex items-center justify-between px-8 py-5 border-b border-white/10 sticky top-0 bg-[#0f0f10]/90 backdrop-blur z-10">
+      <div className="font-display text-2xl tracking-wide">Fashion<span className="accent">Hub</span></div>
+      <nav className="hidden md:flex gap-8 text-sm text-white/70 items-center">
+        <a className="hover:text-white" href="#collection" onClick={() => setView('store')}>Collection</a>
+        <a className="hover:text-white" href="#track" onClick={() => setView('store')}>Track Order</a>
+        <button onClick={() => setView(view === 'admin' ? 'store' : 'admin')}
+          className={`text-xs px-3 py-1.5 rounded-full ${view === 'admin' ? 'bg-accent text-black font-semibold' : 'border border-white/20 accent'}`}>
+          {view === 'admin' ? '← Back to Store' : 'Admin'}
+        </button>
+      </nav>
+    </header>
+  );
+}
+
+function Hero() {
+  return (
+    <section className="px-8 py-20 text-center border-b border-white/10">
+      <p className="uppercase tracking-[0.3em] text-xs text-white/50 mb-4">New Season</p>
+      <h1 className="font-display text-5xl md:text-6xl leading-tight mb-4">Dressed by data,<br/>styled by taste.</h1>
+      <p className="text-white/60 max-w-xl mx-auto mb-8">Chat with our AI sales assistant in the corner — ask about sizes, colors, prices, or say "I need a black dress for Eid" and watch it recommend real stock.</p>
+      <a href="#collection" className="inline-block bg-accent text-black px-6 py-3 rounded-full text-sm font-semibold">Shop the Collection</a>
+    </section>
+  );
+}
+
+function ProductCard({ p, onAsk }) {
+  const finalPrice = Math.round(p.price - (p.price * (p.discount||0))/100);
+  return (
+    <div className="border border-white/10 rounded-xl p-5 flex flex-col gap-3 hover:border-accent/60 transition">
+      <div className="aspect-[3/4] bg-white/5 rounded-lg overflow-hidden">
+        <img src={p.images?.[0]} alt={p.name} className="w-full h-full object-cover" />
+      </div>
+      <div>
+        <h3 className="font-medium">{p.name}</h3>
+        <p className="text-white/50 text-xs">{p.colors?.join(', ')} · {p.sizes?.join(', ')}</p>
+      </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="font-semibold">Rs {finalPrice}</span>
+          {p.discount > 0 && <span className="text-white/40 text-xs line-through ml-2">Rs {p.price}</span>}
+        </div>
+        <button onClick={() => onAsk(p)} className="text-xs accent hover:underline">Ask AI</button>
+      </div>
+    </div>
+  );
+}
+
+function Collection({ onAsk }) {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/products`)
+      .then(r => r.json())
+      .then(data => { setProducts(data); setLoading(false); })
+      .catch(() => { setError('Could not reach backend — start the API server (see README) and refresh.'); setLoading(false); });
+  }, []);
+
+  return (
+    <section id="collection" className="px-8 py-16 border-b border-white/10">
+      <h2 className="font-display text-3xl mb-8">Current Collection</h2>
+      {loading && <p className="text-white/50 text-sm">Loading products…</p>}
+      {error && <p className="text-red-400 text-sm">{error}</p>}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+        {products.map(p => <ProductCard key={p._id} p={p} onAsk={onAsk} />)}
+      </div>
+    </section>
+  );
+}
+
+function TrackOrder() {
+  const [tracking, setTracking] = useState('');
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  const track = async () => {
+    setError(''); setResult(null);
+    try {
+      const r = await fetch(`${API_BASE}/orders/track/${tracking}`);
+      if (!r.ok) { setError('Order not found.'); return; }
+      setResult(await r.json());
+    } catch { setError('Could not reach backend.'); }
+  };
+
+  return (
+    <section id="track" className="px-8 py-16 border-b border-white/10 max-w-lg">
+      <h2 className="font-display text-3xl mb-4">Track Your Order</h2>
+      <div className="flex gap-2">
+        <input value={tracking} onChange={e=>setTracking(e.target.value)} placeholder="Tracking number e.g. FH-12345678"
+          className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm outline-none focus:border-accent" />
+        <button onClick={track} className="bg-accent text-black px-4 py-2 rounded-lg text-sm font-semibold">Track</button>
+      </div>
+      {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
+      {result && (
+        <div className="mt-4 text-sm text-white/70 border border-white/10 rounded-lg p-4">
+          <p>Status: <span className="accent capitalize">{result.status}</span></p>
+          <p>Total: Rs {result.totalAmount}</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ChatWidget({ prefill }) {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState([
+    { sender: 'ai', text: "Welcome to FashionHub! How can I help you today? Try: \"I need a black dress for Eid under 6000\"" }
+  ]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef(null);
+
+  useEffect(() => { if (prefill) { setOpen(true); setInput(prefill); } }, [prefill]);
+  useEffect(() => { scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight); }, [messages]);
+
+  const send = async (textOverride) => {
+    const text = (textOverride ?? input).trim();
+    if (!text || sending) return;
+    setMessages(m => [...m, { sender: 'customer', text }]);
+    setInput('');
+    setSending(true);
+    try {
+      const r = await fetch(`${API_BASE}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, channel: 'website', customerRef: { name: 'Demo Customer' } })
+      });
+      const data = await r.json();
+      setMessages(m => [...m, { sender: 'ai', text: data.reply, intent: data.intent, sentiment: data.sentiment }]);
+    } catch {
+      setMessages(m => [...m, { sender: 'ai', text: "I couldn't reach the AI service — make sure the backend is running (see README)." }]);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50">
+      {open && (
+        <div className="w-80 h-[28rem] bg-[#1a1a1c] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden mb-3">
+          <div className="bg-accent text-black px-4 py-3 flex justify-between items-center">
+            <span className="font-semibold text-sm">FashionHub AI Assistant</span>
+            <button onClick={() => setOpen(false)} className="text-black/70">✕</button>
+          </div>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto chat-scroll p-3 space-y-2 text-sm">
+            {messages.map((m, i) => (
+              <div key={i} className={`max-w-[85%] px-3 py-2 rounded-xl whitespace-pre-line ${m.sender === 'customer' ? 'bg-accent text-black ml-auto' : 'bg-white/10 text-white'}`}>
+                {m.text}
+              </div>
+            ))}
+            {sending && <div className="text-white/40 text-xs">AI is typing…</div>}
+          </div>
+          <div className="p-2 border-t border-white/10 flex gap-2">
+            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=> e.key==='Enter' && send()}
+              placeholder="Type a message…" className="flex-1 bg-white/5 rounded-lg px-3 py-2 text-sm outline-none" />
+            <button onClick={() => send()} className="bg-accent text-black px-3 rounded-lg text-sm font-semibold">Send</button>
+          </div>
+        </div>
+      )}
+      <button onClick={() => setOpen(o => !o)} className="w-14 h-14 rounded-full bg-accent text-black flex items-center justify-center shadow-lg text-2xl">
+        💬
+      </button>
+    </div>
+  );
+}
+
+// ---------- Admin dashboard components ----------
+
+function AdminProductsTab() {
+  const [products, setProducts] = useState([]);
+  const load = () => fetch(`${API_BASE}/products`).then(r=>r.json()).then(setProducts).catch(()=>{});
+  useEffect(load, []);
+
+  const remove = async (id) => {
+    await fetch(`${API_BASE}/products/${id}`, { method: 'DELETE' });
+    load();
+  };
+
+  return (
+    <div>
+      <h2 className="text-xl font-semibold mb-4">Products ({products.length})</h2>
+      <table className="w-full text-sm text-left">
+        <thead className="text-white/40 border-b border-white/10">
+          <tr><th className="py-2">Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Rating</th><th></th></tr>
+        </thead>
+        <tbody>
+          {products.map(p => (
+            <tr key={p._id} className="border-b border-white/5">
+              <td className="py-2">{p.name}</td>
+              <td>{p.category}</td>
+              <td>Rs {p.price}</td>
+              <td>{p.stock}</td>
+              <td>{p.rating}</td>
+              <td><button onClick={()=>remove(p._id)} className="text-red-400 text-xs">Delete</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AdminOrdersTab() {
+  const [orders, setOrders] = useState([]);
+  const load = () => fetch(`${API_BASE}/orders`).then(r=>r.json()).then(setOrders).catch(()=>{});
+  useEffect(load, []);
+
+  const updateStatus = async (id, status) => {
+    await fetch(`${API_BASE}/orders/${id}/status`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status })
+    });
+    load();
+  };
+
+  return (
+    <div>
+      <h2 className="text-xl font-semibold mb-4">Orders ({orders.length})</h2>
+      <table className="w-full text-sm text-left">
+        <thead className="text-white/40 border-b border-white/10">
+          <tr><th className="py-2">Tracking #</th><th>Customer</th><th>Total</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          {orders.map(o => (
+            <tr key={o._id} className="border-b border-white/5">
+              <td className="py-2">{o.trackingNumber}</td>
+              <td>{o.customer?.name || o.customer?.phone || '—'}</td>
+              <td>Rs {o.totalAmount}</td>
+              <td className="capitalize accent">{o.status}</td>
+              <td>
+                <select defaultValue={o.status} onChange={e=>updateStatus(o._id, e.target.value)}
+                  className="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs">
+                  {['pending','confirmed','shipped','delivered','cancelled','returned'].map(s=>
+                    <option key={s} value={s}>{s}</option>)}
+                </select>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PlatformCard({ platform, label, icon, status, onConnect, onDisconnect }) {
+  const info = status?.[platform];
+  return (
+    <div className="border border-white/10 rounded-xl p-5 flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <span className="text-2xl">{icon}</span>
+        <div>
+          <p className="font-medium">{label}</p>
+          {info?.connected ? (
+            <p className="text-xs text-green-400">Connected — {info.pageName}</p>
+          ) : (
+            <p className="text-xs text-white/40">Not connected</p>
+          )}
+        </div>
+      </div>
+      {info?.connected ? (
+        <button onClick={() => onDisconnect(platform)} className="text-xs border border-white/20 rounded-full px-4 py-2 text-white/70 hover:border-red-400 hover:text-red-400">
+          Disconnect
+        </button>
+      ) : (
+        <button onClick={() => onConnect(platform)} className="text-xs bg-accent text-black rounded-full px-4 py-2 font-semibold">
+          Connect
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AdminSettingsTab() {
+  const [status, setStatus] = useState(null);
+  const [configError, setConfigError] = useState(false);
+
+  const loadStatus = () => fetch(`${API_BASE}/meta/status`).then(r=>r.json()).then(setStatus).catch(()=>{});
+  useEffect(loadStatus, []);
+
+  useEffect(() => {
+    const onFocus = () => loadStatus();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
+
+  const connect = async (platform) => {
+    setConfigError(false);
+    const check = await fetch(`${API_BASE}/meta/connect/${platform}`, { redirect: 'manual' }).catch(() => null);
+    if (check && check.status === 500) { setConfigError(true); return; }
+    window.open(`${API_BASE}/meta/connect/${platform}`, '_blank', 'width=600,height=700');
+  };
+
+  const disconnect = async (platform) => {
+    await fetch(`${API_BASE}/meta/disconnect/${platform}`, { method: 'POST' });
+    loadStatus();
+  };
+
+  return (
+    <div className="max-w-xl">
+      <h2 className="text-xl font-semibold mb-1">Integrations</h2>
+      <p className="text-white/40 text-sm mb-6">Connect your brand's Facebook Page and Instagram account so the AI agent can reply to DMs automatically.</p>
+      {configError && (
+        <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg p-3 mb-4">
+          Meta App isn't configured yet. Add META_APP_ID, META_APP_SECRET, and META_REDIRECT_URI to backend/.env — see README for setup steps.
+        </div>
+      )}
+      <div className="space-y-3">
+        <PlatformCard platform="facebook" label="Facebook Page" icon="📘" status={status} onConnect={connect} onDisconnect={disconnect} />
+        <PlatformCard platform="instagram" label="Instagram" icon="📸" status={status} onConnect={connect} onDisconnect={disconnect} />
+      </div>
+    </div>
+  );
+}
+
+function AdminView() {
+  const [tab, setTab] = useState('Products');
+  const TABS = ['Products', 'Orders', 'Settings'];
+  return (
+    <div className="max-w-5xl mx-auto p-8">
+      <h1 className="text-2xl font-bold mb-1">FashionHub <span className="accent">Admin</span></h1>
+      <p className="text-white/40 text-sm mb-6">Manage products, orders, and view AI conversation data.</p>
+      <div className="flex gap-2 mb-6">
+        {TABS.map(t => (
+          <button key={t} onClick={()=>setTab(t)}
+            className={`px-4 py-2 rounded-full text-sm ${tab===t ? 'bg-accent text-black' : 'bg-white/5 text-white/60'}`}>
+            {t}
+          </button>
+        ))}
+      </div>
+      {tab === 'Products' && <AdminProductsTab />}
+      {tab === 'Orders' && <AdminOrdersTab />}
+      {tab === 'Settings' && <AdminSettingsTab />}
+    </div>
+  );
+}
+
+function App() {
+  const [prefill, setPrefill] = useState('');
+  const [view, setView] = useState(window.location.hash === '#admin' ? 'admin' : 'store');
+  const askAboutProduct = (p) => setPrefill(`Tell me more about ${p.name}, do you have it in stock?`);
+
+  useEffect(() => {
+    window.location.hash = view === 'admin' ? 'admin' : '';
+  }, [view]);
+
+  return (
+    <div>
+      <Header view={view} setView={setView} />
+      {view === 'admin' ? (
+        <AdminView />
+      ) : (
+        <>
+          <Hero />
+          <Collection onAsk={askAboutProduct} />
+          <TrackOrder />
+          <ChatWidget prefill={prefill} />
+        </>
+      )}
+      <footer className="px-8 py-8 text-center text-white/30 text-xs">Demo build — FashionHub AI Sales Assistant</footer>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
